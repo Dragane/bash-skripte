@@ -1,0 +1,11 @@
+[Unit]
+Description=Description for sample script goes here
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/radio/timeoutcontrol/start_radio_with_tcpdump_check.sh
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target

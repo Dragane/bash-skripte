@@ -1,0 +1,55 @@
+#!/bin/bash
+# Author: Dragan
+# Date: 8.1.2018
+# SKripta monitorira TCPDUMP promet za določen multicast. Če prometa ni, pogleda če procesi morda tečejo. Če tečejo, ubije PID od radio skripte in PID od FFMPEG za določen MULTICAST.
+# Nato skripte za radio požene.
+
+cd /root/radio/
+
+
+while [ "0" -lt "1" ] # Infinite loop.
+do
+        RADIOLIST=($(find /root/radio/*.sh -maxdepth 1 -type f)) # Array z listo radio skript.
+        for RADIONAME in "${RADIOLIST[@]}" # Pojdi čez celoten array - lista radiev.
+        do
+		echo ""
+		echo "Checking if $RADIONAME radio is running ..."
+		MULTICAST=`grep MULTICAST= "$RADIONAME" | cut -d '"' -f 2` # Multicast radia, grepan iz radio skripte.
+                RADIOSCRIPT_PID=`pidof -x "$RADIONAME" -o %PPID` # Process ID od skripte radia.
+                FFMPEG_PID=`pgrep -f "$MULTICAST"` # Process ID od FFMPEG, ki poganja radio.
+
+                TCPDUMP_WANTED=`echo "$MULTICAST" | cut -f 1 -d ':'` # Iz multicast naslova izločimo port, saj se brez porta pojavlja v TCPDUMP,
+		# 10s monitoriramo tcpdump za določenim multicast prometom. Izločimo samo multicast naslov in odstranimo newline s tr -d '\n'. Zajamemo samo en paket, s parametrom -c1.
+		TCPDUMP_ACTUAL=`timeout 10 /usr/sbin/tcpdump -v -i eth1 -c1 dst "$TCPDUMP_WANTED" | \
+                        /usr/bin/awk -F '>' '{print $2}' | \
+                        /usr/bin/awk -F ' ' '{print $1}' | \
+                        /usr/bin/awk -F '.targus-getdata:' '{print $1}' | \
+                        tr -d '\n'`
+
+                if [ "$TCPDUMP_WANTED" != "$TCPDUMP_ACTUAL" ] # Primerja želen multicast naslov z dejanskim v TCPDUMP. Če prometa ni, potem izvede spodnji If funkciji in ponovno požene skripto.
+                then
+			if [ ! -z "${FFMPEG_PID// }" ] # Če process ID od FFMPEG obstaja (če ni prazen string), potem proces ubij.
+						     # Tu odstranimo še morebitne presledke, saj je string lahko prazen, a ima vseeno neke presledke. Bash tako z -z ne ve da je string prazen.
+			then
+				echo "Killing the process $FFMPEG_PID"
+	                        kill -9 "$FFMPEG_PID"
+			fi
+
+			if [ ! -z "${RADIOSCRIPT_PID// }" ] # Če process ID od skripte radia obstaja (če ni prazen string), potem proces ubij.
+ 							 # Tu odstranimo še morebitne presledke, saj je string lahko prazen, a ima vseeno neke presledke. Bash tako z -z ne ve da je string prazen.
+			then
+				echo "Killing the process $RADIOSCRIPT_PID"
+                        	kill -9 "$RADIOSCRIPT_PID"
+			fi
+			echo "$RADIONAME radio is not running. Reconnecting ..."
+		else
+			echo "$RADIONAME radio is working OK!"
+                fi
+        done
+
+/usr/bin/sleep 5
+
+done
+
+
+
